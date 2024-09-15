@@ -1,6 +1,6 @@
 ## Links
 
-Link to site: https://drumsky-pokedex-v2.onrender.com
+Link to site: https://periodicelements.onrender.com
 
 ## Used
 
