@@ -1,11 +1,14 @@
 import { Component, OnInit } from '@angular/core';
 import { MatDialog } from '@angular/material/dialog';
 import { FormControl } from '@angular/forms';
-import { debounceTime } from 'rxjs/operators';
+import { debounceTime, map } from 'rxjs/operators';
 import { PeriodicElement } from 'src/app/models/PeriodicElement';
 import { EditElementDialogComponent } from 'src/app/components/edit-element-dialog/edit-element-dialog.component';
+import { RxState } from '@rx-angular/state';
+import { MatTableDataSource } from '@angular/material/table';
+import { ComponentState } from 'src/app/models/ComponentState';
 
-const ELEMENT_DATA: PeriodicElement[] = [
+const INITIAL_DATA: PeriodicElement[] = [
   { position: 1, name: 'Hydrogen', weight: 1.0079, symbol: 'H' },
   { position: 2, name: 'Helium', weight: 4.0026, symbol: 'He' },
   { position: 3, name: 'Lithium', weight: 6.941, symbol: 'Li' },
@@ -22,26 +25,45 @@ const ELEMENT_DATA: PeriodicElement[] = [
   selector: 'periodic-element',
   templateUrl: './periodic-element.component.html',
   styleUrls: ['./periodic-element.component.css'],
+  providers: [RxState],
 })
 export class PerioddicElementComponent implements OnInit {
   public displayedColumns: string[] = ['position', 'name', 'weight', 'symbol', 'actions'];
-  public dataSource = [...ELEMENT_DATA];
   public filterControl = new FormControl('');
-  
-  constructor(public dialog: MatDialog) {}
+  public dataSource = new MatTableDataSource<PeriodicElement>();
 
-  ngOnInit() {
-    this.filterControl.valueChanges.pipe(debounceTime(2000)).subscribe(value => {
-      this.applyFilter(value ?? '');
+  constructor(
+    public dialog: MatDialog,
+    private state: RxState<ComponentState>,
+  ) {
+    this.state.set({
+      elements: INITIAL_DATA,
+      filteredElements: INITIAL_DATA,
+      filter: '',
     });
   }
 
-  public applyFilter(filterValue: string): void {
-    this.dataSource = ELEMENT_DATA.filter(element => 
-      element.name.toLowerCase().includes(filterValue.toLowerCase()) ||
-      element.symbol.toLowerCase().includes(filterValue.toLowerCase()) ||
-      element.position.toString().includes(filterValue) ||
-      element.weight.toString().includes(filterValue)
+  ngOnInit() {
+    this.state.select('filteredElements').subscribe(elements => {
+      this.dataSource.data = elements;
+    });
+
+    this.filterControl.valueChanges.pipe(debounceTime(2000)).subscribe(value => {
+      this.state.set({ filter: value ?? '' });
+    });
+
+    this.state.connect(
+      'filteredElements',
+      this.state.select('filter').pipe(
+        map(filterValue =>
+          this.state.get('elements').filter(element =>
+            element.name.toLowerCase().includes(filterValue.toLowerCase()) ||
+            element.symbol.toLowerCase().includes(filterValue.toLowerCase()) ||
+            element.position.toString().includes(filterValue) ||
+            element.weight.toString().includes(filterValue)
+          )
+        )
+      )
     );
   }
 
@@ -53,11 +75,14 @@ export class PerioddicElementComponent implements OnInit {
 
     dialogRef.afterClosed().subscribe(result => {
       if (result) {
-        const index = ELEMENT_DATA.findIndex(item => item.position === result.position);
-        if (index !== -1) {
-          ELEMENT_DATA[index] = result;
-          this.applyFilter(this.filterControl.value ?? '');
-        }
+        this.state.set({
+          elements: this.state.get('elements').map(item =>
+            item.position === result.position ? result : item
+          )
+        });
+        this.state.set({
+          filteredElements: this.state.get('elements')
+        });
       }
     });
   }
